@@ -21,11 +21,12 @@ int main(int argc, char* argv[])
 	TCPListener listener;
 	Packet packet;
 	UInt8 packetType;
-	bool operationCanceled = false;
-
-	char data[DEFAULT_BUFLEN];
+	UInt32 lastUploadedPiece;
+	bool enableDelay = false;
 
 	std::vector<std::string> uploadedFiles;
+	std::string uploadingFileName;
+	std::ofstream uploadingFile;
 
 	iResult = listener.Bind(((argc == 2) ? argv[1] : DEFAULT_PORT));
 	if (iResult != 0)
@@ -53,13 +54,12 @@ int main(int argc, char* argv[])
 				socket.reset(listener.Accept());
 			} 
 			while (socket == nullptr);
+
 			std::cout << "New client has connected.\n";
 		}
-		if (!operationCanceled)
-			iResult = socket->Receive(packet);
-		else
-			operationCanceled = false;
-		if (iResult == SOCKET_ERROR)
+
+		iResult = socket->Receive(packet, enableDelay ? 5 : -1);
+		if (iResult == SOCKET_ERROR || (enableDelay && iResult == 0))
 		{
 			socket->Close();
 			continue;
@@ -68,187 +68,81 @@ int main(int argc, char* argv[])
 		packet >> packetType;
 		switch (packetType)
 		{
-			case ECHO_CODE:
+			case ECHO:
 			{
-				packet >> data;
-				std::cout << "Echo command.\nClient says: " << data << std::endl;
+				std::string msg;
+				packet >> msg;
+				std::cout << "Echo command.\nClient says: " << msg << std::endl;
 				packet.Clear();
-				packet << (UInt8)ECHO_CODE << data;
+				packet << ECHO << msg;
 				socket->Send(packet);
 				break;
 
 			}
-			case TIME_CODE:
+			case TIME:
 			{
 				char buff[20];
-				time_t now = time(NULL);
+				time_t now = time(nullptr);
+
 				strftime(buff, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
+
 				std::cout << "Time command.\nCurrent time " << buff << std::endl;
+
 				packet.Clear();
-				packet << (UInt8)TIME_CODE << buff;
+				packet << TIME << buff;
+
 				socket->Send(packet);
+
 				break;
 			}
-			case CLOSE_CONNECTION_CODE:
+			case CLOSE_CONNECTION:
 			{
 				std::cout << "Close command.\nClosing current connection.\n";
 				socket->Close();
 				break;
 			}
-			case UPLOAD_CODE:
+			case UPLOAD_PIECE:
 			{
-				std::ofstream uploadingFile;
-				char name[20];
-				size_t received = 0;
-				UInt64 piecesNumber;
+				UInt32 size;
+				UInt32 pieceNumber;
+				
+				packet >> pieceNumber >> size;
 
+				char* piece = new char[size];
+				packet.ExtractRawData(piece);
 
-				packet >> name >> piecesNumber;
+				uploadingFile.seekp(pieceNumber * DEFAULT_BUFFLEN);
+				uploadingFile.write(piece, size);
+				delete piece;
 
-				uploadingFile.open(name, std::fstream::binary | std::fstream::trunc);
-				std::cout << piecesNumber << std::endl;
-				std::cout << "Receiving " << name << " file.\n";
-				for (UInt64 i = 0; i < piecesNumber; i++)
-				{
-					iResult = socket->Receive(packet);
-					if (iResult <= 0)
-					{
-						std::cout << "Error occuried during uploading. Listening for incoming connections.\n";
-						
-						socket->Close();
-						do
-						{
-							socket.reset(listener.Accept());
-						} 
-						while (socket == nullptr);
-						socket->Receive(packet);
-						packet >> packetType;
-						if (packetType != CONTINUE_INTERRUPTED_CODE)
-						{
-							std::cout << "New client connected.\n";
-							operationCanceled = true;
-							break;
-						}
-						else
-						{
-							std::cout << "Client reconnected.\n";
-							i--;
-							continue;
-						}
-					}
-
-					received += iResult;
-					UInt32 bytesRead = packet.ExtractRawData(data);
-					uploadingFile.write(data, bytesRead);
-				}
-				uploadingFile.close();
-				if (operationCanceled)
-				{
-					std::cout << "File " << name << " upload was canceled.\n";
-					std::remove(name);
-				}
-				else
-				{
-					std::cout << "File " << name << " uploaded.\n";
-					uploadedFiles.push_back(std::string(name));
-				}
-
+				lastUploadedPiece = pieceNumber;
 
 				break;
 			}
-			case DOWNLOAD_CODE:
+			case CONTINUE_INTERRUPTED_UPLOAD:
 			{
-				std::ifstream downloadingFile;
-				char name[20];
-				UInt64 size, piecesNumber;
-
-				packet >> name;
-				auto iter = std::find(std::begin(uploadedFiles), std::end(uploadedFiles), std::string(name));
-
-				if (iter == std::end(uploadedFiles))
-				{
-					std::cout << "Attempt to download missing file " << name << std::endl;
-
-					packet.Clear();
-					packet << (UInt32)ERROR_CODE;
-					iResult = socket->Send(packet);
-					break;
-				}
-
-				downloadingFile.open(name, std::ifstream::ate | std::ifstream::binary);
-				if (!downloadingFile.is_open())
-				{
-					std::cout << "File opening failed.\n";
-					packet.Clear();
-					packet << (UInt32)ERROR_CODE;
-					iResult = socket->Send(packet);
-					break;
-				}
-
-
-				size = downloadingFile.tellg();
-				downloadingFile.seekg(0, std::ios::beg);
-
-				piecesNumber = size / DEFAULT_BUFLEN;
-				piecesNumber += (size % DEFAULT_BUFLEN) ? 1 : 0;
-
 				packet.Clear();
-				packet << (UInt8)CONFIRM_CODE << piecesNumber;
-				iResult = socket->Send(packet);
-				bool reconnected = false;
+				packet << LAST_RECEIVED_PIECE << lastUploadedPiece;
+				socket->Send(packet);
+				break;
+			}
+			case FILE_UPLOAD_COMPLETE:
+			{
+				uploadedFiles.push_back(uploadingFileName);
+				uploadingFile.close();
+				uploadingFileName.clear();
 
-				for (UInt64 i = 0; i < piecesNumber; i++)
-				{
-					UInt32 toRead = DEFAULT_BUFLEN;
-					if (!reconnected)
-					{
-						if (i == piecesNumber - 1)
-						{
-							toRead = (UInt32)(size - downloadingFile.tellg());
-						}
-						downloadingFile.read(data, toRead);
-					}
-
-					reconnected = false;
-					packet.Clear();
-					packet.AddRawData(data, toRead);
-					iResult = socket->Send(packet);
-					if (iResult == SOCKET_ERROR)
-					{
-						std::cout << "Error occuried during downloading. Listening for incoming connections.\n";
-						
-						socket->Close();
-						do
-						{
-							socket.reset(listener.Accept());
-						} 
-						while (socket == nullptr);
-						socket->Receive(packet);
-						packet >> packetType;
-						if (packetType != CONTINUE_INTERRUPTED_CODE)
-						{
-							operationCanceled = true;
-							break;
-						}
-						else
-						{
-							std::cout << "Client reconnected.\n";
-							i--;
-							continue;
-						}
-					}
-
-				}
-				downloadingFile.close();
-				if (operationCanceled)
-					std::cout << "File download canceled.\n";
-				else
-					std::cout << "File downloaded.\n";
-
+				enableDelay = false;
+				break;
+			}
+			case DOWNLOAD_PIECE:
+			{
+				
+				
 				break;
 
 			}
-			case SHUTDOWN_CODE:
+			case SHUTDOWN:
 			{
 				std::cout << "\nShutdown command.\nShuting down.\n";
 				listener.Close();
@@ -256,6 +150,55 @@ int main(int argc, char* argv[])
 				SocketCleanUp();
 
 				return 0;
+			}
+			case UPLOAD_REQUEST:
+			{
+				if (uploadingFile.is_open())
+				{
+					uploadingFile.close();
+					std::remove(uploadingFileName.c_str());
+				}
+
+				packet >> uploadingFileName;
+				
+				uploadingFile.open(uploadingFileName, std::ios::binary);
+
+				enableDelay = true;
+
+				break;
+			}
+			case GET_FILE_ID:
+			{
+				std::string fileName;
+				Int32 fileID;
+				UInt64 fileSize;
+				
+				packet >> fileName;
+
+				std::vector<std::string>::iterator iter = std::find(uploadedFiles.begin(), uploadedFiles.end(), fileName);
+				if (iter == uploadedFiles.end())
+				{
+					fileID = -1;
+					fileSize = -1;
+				}
+				else
+				{
+					fileID = iter - uploadedFiles.begin();
+
+					std::ifstream file(uploadedFiles[fileID], std::ios::binary | std::ios::ate);
+					fileSize = file.tellg();
+					file.close();
+				}
+
+				packet.Clear();
+				packet << FILE_ID << fileID << fileSize;
+
+				iResult = socket->Send(packet);
+				break;
+			}
+			default:
+			{
+				std::cout << packetType << " unknown command./n";
 			}
 		}
 	}

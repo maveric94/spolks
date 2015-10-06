@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
 	SocketStartUp();
 	TCPSocket socket;
 	Packet packet;
-	char data[DEFAULT_BUFLEN];
+	char data[DEFAULT_BUFFLEN];
 	int iResult;
 
 	std::string str;
@@ -35,8 +35,9 @@ int main(int argc, char* argv[])
 		SocketCleanUp();
 		return 1;
 	}
-	
 
+	std::cout << "Connection to server was succesesful.\n";
+	
 	while (true)
 	{
 		std::cin >> str;
@@ -44,10 +45,10 @@ int main(int argc, char* argv[])
 		{
 			std::ifstream uploadingFile;
 			UInt64 size, piecesNumber;
-			char name[20];
-			std::cin.ignore(1);
-			std::cin.getline(name, 20);
+			std::string name;
 
+			std::cin.ignore(1);
+			std::getline(std::cin, name);
 
 			uploadingFile.open(name, std::ifstream::ate | std::ifstream::binary);
 			if (!uploadingFile.is_open())
@@ -59,89 +60,89 @@ int main(int argc, char* argv[])
 			size = uploadingFile.tellg();
 			uploadingFile.seekg(0, std::ios::beg);
 
-			piecesNumber = size / DEFAULT_BUFLEN;
-			piecesNumber += (size % DEFAULT_BUFLEN) ? 1 : 0;
+			piecesNumber = size / DEFAULT_BUFFLEN;
+			piecesNumber += (size % DEFAULT_BUFFLEN) ? 1 : 0;
+
+			std::cout << "Uploading file: " << name << ". Size " << size << " bytes.\n";
 
 			packet.Clear();
-			packet << (UInt8)UPLOAD_CODE << name << piecesNumber;
+			packet << UPLOAD_REQUEST << name;
 
-			std::cout << "Uploading file " << size << std::endl;
+			socket.Send(packet);
 
-			//Send an initial data
-			iResult = socket.Send(packet);
-			if (iResult == SOCKET_ERROR)
+			char* piece = new char[DEFAULT_BUFFLEN];
+
+			for (UInt32 i = 0; i < piecesNumber; i++)
 			{
-				std::cout << "Sending data  error.\n";
-				socket.Close();
-				SocketCleanUp();
-				return 1;
-			}
-			bool reconnected = false;
-			for (UInt64 i = 0; i < piecesNumber; i++)
-			{
-				UInt32 toRead = DEFAULT_BUFLEN;
-				/*if (i == 10 && !reconnected)
-					socket.Close();*/
-				if (!reconnected)
-				{
-					if (i == piecesNumber - 1)
-					{
-						toRead = (UInt32)(size - uploadingFile.tellg());
-					}
-					uploadingFile.read(data, toRead);
-				}
+				UInt32 bytesToRead = (i == piecesNumber - 1) ? size % DEFAULT_BUFFLEN : DEFAULT_BUFFLEN;
+				
+				uploadingFile.seekg(i * DEFAULT_BUFFLEN);
+				uploadingFile.read(piece, bytesToRead);
 
-				reconnected = false;
 				packet.Clear();
-				packet.AddRawData(data, toRead);
-				iResult = socket.Send(packet);
-				if (iResult == SOCKET_ERROR)
+				packet << UPLOAD_PIECE << i << bytesToRead;
+				packet.AddRawData(piece, bytesToRead);
+
+				iResult = socket.Send(packet, 5);
+				if (iResult <= 0)
 				{
-					std::cout << "Error occuried during uploading. Trying to reconnect.\n";
-					socket.Close(); //just in case
+					socket.Close();
 					for (UInt32 j = 0; j < 100; j++)
 					{
-						sleep(100);
-						iResult = socket.Reconnect();
-						if (iResult == 0)
+						socket.Reconnect();
+						if (socket.IsConnected())
 							break;
+						sleep(100);
 					}
-					if (iResult != 0)
+
+					if (socket.IsConnected())
 					{
-						std::cout << "Reconnection failed\n.";
-						socket.Close();
-						uploadingFile.close();
-						SocketCleanUp();
-						return 1;
+						packet.Clear();
+						packet << CONTINUE_INTERRUPTED_UPLOAD;
+						socket.Send(packet);
+
+						socket.Receive(packet);
+
+						UInt8 code;
+						UInt32 pieceNumber;
+
+						packet >> code >> pieceNumber;
+						i = pieceNumber;
+						continue;
 					}
 					else
 					{
-						std::cout << "Reconnection was successeful.\n";
-						packet.Clear();
-						packet << (UInt8)CONTINUE_INTERRUPTED_CODE;
-						socket.Send(packet);
-						reconnected = true;
-						i--;
-						continue;
+						std::cout << "Reconnection failed.\n";
+						socket.Close();
+						SocketCleanUp();
+						return 1;
 					}
+					
 				}
 
 			}
+			
+			packet.Clear();
+			packet << FILE_UPLOAD_COMPLETE;
+
+			socket.Send(packet);
+
 			uploadingFile.close();
-			std::cout << "File " << name << " uploaded.\n";
+
+			std::cout << "Uploading file: " << name << " complete.\n";
 
 		}
 		else if (str == "download")
 		{
 			std::ofstream downloadingFile;
-			UInt64 piecesNumber;
+			UInt64 piecesNumber = 0;
 			UInt8 opCode;
 			char name[20];
 			std::cin.ignore(1);
 			std::cin.getline(name, 20);
 
 			packet.Clear();
-			packet << (UInt8)DOWNLOAD_CODE << name;
+			packet << (UInt8)DOWNLOAD_PIECE << name;
 			iResult = socket.Send(packet);
 			if (iResult == SOCKET_ERROR)
 			{
@@ -155,7 +156,7 @@ int main(int argc, char* argv[])
 			}
 
 			packet >> opCode;
-			if (opCode == ERROR_CODE)
+			/*if (opCode == ERROR_CODE)
 			{
 				std::cout << "No such file on server.\n";
 				continue;
@@ -163,7 +164,7 @@ int main(int argc, char* argv[])
 			else if (opCode == CONFIRM_CODE)
 			{
 				packet >> piecesNumber;
-			}
+			}*/
 
 			downloadingFile.open(name, std::fstream::binary | std::fstream::trunc);
 			if (!downloadingFile.is_open())
@@ -199,7 +200,7 @@ int main(int argc, char* argv[])
 					{
 						std::cout << "Reconnection was successeful.\n";
 						packet.Clear();
-						packet << (UInt8)CONTINUE_INTERRUPTED_CODE;
+						//packet << (UInt8)CONTINUE_INTERRUPTED_CODE;
 						socket.Send(packet);
 						i--;
 						continue;
@@ -216,7 +217,7 @@ int main(int argc, char* argv[])
 		else if (str == "close")
 		{
 			packet.Clear();
-			packet << (UInt8)CLOSE_CONNECTION_CODE;
+			packet << (UInt8)CLOSE_CONNECTION;
 			iResult = socket.Send(packet);
 			std::cout << "Close command.\n" << packet.Size() << " bytes are sent.\n";
 			break;
@@ -225,27 +226,32 @@ int main(int argc, char* argv[])
 		{
 			std::cout << "Shutdown command.\n";
 			packet.Clear();
-			packet << (UInt8)SHUTDOWN_CODE;
+			packet << (UInt8)SHUTDOWN;
 			iResult = socket.Send(packet);
 			break;
 		}
 		else if (str == "echo")
 		{
+			std::string msg;
+
 			std::cin.ignore(1);
-			std::cin.getline(data, DEFAULT_BUFLEN);
+			std::getline(std::cin, msg);
+
 			packet.Clear();
-			packet << (UInt8)ECHO_CODE << data;
+			packet << (UInt8)ECHO << msg;
+
 			iResult = socket.Send(packet);
 			iResult = socket.Receive(packet);
+
 			UInt8 type;
-			packet >> type >> data;
-			std::cout << "Server says: " << data << std::endl;
+			packet >> type >> msg;
+			std::cout << "Server says: " << msg << std::endl;
 		}
 		else if (str == "time")
 		{
 			std::cout << "Time command.\n";
 			packet.Clear();
-			packet << (UInt8)TIME_CODE;
+			packet << (UInt8)TIME;
 			iResult = socket.Send(packet);
 			iResult = socket.Receive(packet);
 			UInt8 type;

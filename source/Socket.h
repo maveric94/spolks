@@ -16,7 +16,6 @@ void sleep(int milliseconds);
 #include <windows.h>
 #include <ws2tcpip.h>
 
-// Need to link with Ws2_32.lib, Mswsock.lib, and Advapi32.lib
 #pragma comment (lib, "Ws2_32.lib")
 #pragma comment (lib, "Mswsock.lib")
 #pragma comment (lib, "AdvApi32.lib")
@@ -34,6 +33,8 @@ typedef SOCKET Socket;
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/time.h>
 
 typedef int Socket;
 

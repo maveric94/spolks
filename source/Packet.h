@@ -2,6 +2,7 @@
 #define PACKET_H
 
 #include <vector>
+#include <string>
 #include <cstring>
 #include <cwchar>
 #include "TypeDefs.h"
@@ -26,6 +27,7 @@ public:
 	Packet& operator >> (UInt64& data);
 	Packet& operator >> (char* data);
 	Packet& operator >> (wchar_t* data);
+	Packet& operator >> (std::string& data);
 
 	Packet& operator << (Int8 data);
 	Packet& operator << (UInt8 data);
@@ -35,12 +37,13 @@ public:
 	Packet& operator << (UInt64 data);
 	Packet& operator << (char* data);
 	Packet& operator << (wchar_t* data);
+	Packet& operator << (std::string& data);
 
 	void AddRawData(void* data, UInt32 length);
 	UInt32 ExtractRawData(void* data);
 
 private:
-	void append(void* data, size_t length);
+	void append(const void* data, size_t length);
 	std::vector<char> mData;
 	std::size_t mReadPos;
 };

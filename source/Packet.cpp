@@ -20,7 +20,7 @@ size_t Packet::Size()
 	return mData.size();
 }
 
-void Packet::append(void* data, size_t length)
+void Packet::append(const void* data, size_t length)
 {
 	if (data)
 	{
@@ -131,6 +131,25 @@ Packet& Packet::operator >> (wchar_t* data)
 	return *this;
 }
 
+Packet& Packet::operator >>(std::string& data)
+{
+	// First extract string length
+	UInt32 length = 0;
+	*this >> length;
+
+	data.clear();
+	if (length > 0)
+	{
+		// Then extract characters
+		data.assign(&mData[mReadPos], length);
+
+		// Update reading position
+		mReadPos += length;
+	}
+
+	return *this;
+}
+
 
 
 Packet& Packet::operator << (Int8 data)
@@ -214,6 +233,19 @@ Packet& Packet::operator << (wchar_t* data)
 
 	for (const wchar_t* c = data; *c != L'\0'; ++c)
 		*this << (UInt32)(*c);
+
+	return *this;
+}
+
+Packet& Packet::operator << (std::string& data)
+{
+	// First insert string length
+	UInt32 length = static_cast<UInt32>(data.size());
+	*this << length;
+
+	// Then insert characters
+	if (length > 0)
+		append(data.c_str(), length * sizeof(std::string::value_type));
 
 	return *this;
 }

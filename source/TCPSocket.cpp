@@ -46,26 +46,74 @@ int TCPSocket::Close()
 	return retval;
 }
 
-int TCPSocket::Send(char* data, size_t size)
+int TCPSocket::Send(char* data, size_t size, int delay)
 {
+	if (delay != -1)
+	{
+		fd_set fd;
+		timeval tv;
+
+		FD_ZERO(&fd);
+		FD_SET(mSocket, &fd);
+
+		tv.tv_sec = delay;
+		tv.tv_usec = 0;
+
+		int selectResult = select(mSocket + 1, nullptr, &fd, nullptr, &tv);
+		if (selectResult <= 0)
+		{
+			Close();
+			return selectResult;
+		}
+	}
 	return send(mSocket, data, (int)size, 0);
 }
-int TCPSocket::Receive(char* buffer, size_t size)
+int TCPSocket::Receive(char* buffer, size_t size, int delay)
 {
-	return recv(mSocket, buffer, (int)size, MSG_WAITALL);
+	int bytesLeft = size;
+
+	do
+	{
+		if (delay != -1)
+		{
+			fd_set fd;
+			timeval tv;
+
+			FD_ZERO(&fd);
+			FD_SET(mSocket, &fd);
+
+			tv.tv_sec = delay;
+			tv.tv_usec = 0;
+
+			int selectResult = select(mSocket + 1, &fd, nullptr, nullptr, &tv);
+			if (selectResult <= 0)
+				return selectResult;
+		}
+		int bytesReceived = recv(mSocket, buffer + size - bytesLeft, bytesLeft, 0);
+
+		if (bytesReceived <= 0)
+		{
+			Close();
+			return bytesReceived;
+		}
+
+		bytesLeft -= bytesReceived;
+	} while (bytesLeft);
+
+	return (int)size;
 }
 
-int TCPSocket::Send(Packet& packet)
+int TCPSocket::Send(Packet& packet, int delay)
 {
 	Int32 packetSize = packet.mData.size();
 	Int32 opResult;
 	Packet initPacket;
 	initPacket << packetSize;
 
-	opResult = send(mSocket, &initPacket.mData[0], initPacket.mData.size() * sizeof(char), 0);
+	opResult = Send(&initPacket.mData[0], initPacket.mData.size() * sizeof(char), delay);
 	if (opResult <= 0)
 		return opResult;
-	opResult = send(mSocket, &packet.mData[0], packet.mData.size() * sizeof(char), 0);
+	opResult = Send(&packet.mData[0], packet.mData.size() * sizeof(char), delay);
 	if (opResult <= 0)
 		return opResult;
 
@@ -76,21 +124,24 @@ int TCPSocket::Send(Packet& packet)
 
 	return opResult;
 }
-int TCPSocket::Receive(Packet& packet)
+int TCPSocket::Receive(Packet& packet, int delay)
 {
 	Int32 packetSize;
 	Int32 opResult;
 	Packet initPacket;
 
 	initPacket.mData.resize(sizeof(Int32));
-	opResult = recv(mSocket, &initPacket.mData[0], sizeof(Int32), MSG_WAITALL);
+	opResult = Receive(&initPacket.mData[0], sizeof(Int32), delay);
 	if (opResult <= 0)
+	{
+		std::cout << "Error occured while receiveing data.\n";
 		return opResult;
+	}
 	initPacket >> packetSize;
 
 	packet.Clear();
 	packet.mData.resize(packetSize);
-	opResult = recv(mSocket, &packet.mData[0], packetSize, MSG_WAITALL);
+	opResult = Receive(&packet.mData[0], packetSize, delay);
 	if (opResult > 0)
 		std::cout << opResult << " bytes received.\n";
 	else
@@ -106,7 +157,10 @@ int TCPSocket::Reconnect()
 		// Create a SOCKET for connecting to server
 		mSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
 		if (mSocket == INVALID_SOCKET)
+		{
+			mIsConnected = false;
 			return -1;
+		}
 
 		// Connect to server.
 		if (connect(mSocket, ptr->ai_addr, (int)ptr->ai_addrlen) == SOCKET_ERROR)
@@ -117,7 +171,11 @@ int TCPSocket::Reconnect()
 		break;
 	}
 	if (mSocket == INVALID_SOCKET)
+	{
+		mIsConnected = false;
 		return -1;
+	}
+		
 
 	mIsConnected = true;
 	return 0;
