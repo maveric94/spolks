@@ -21,12 +21,13 @@ int main(int argc, char* argv[])
 	TCPListener listener;
 	Packet packet;
 	UInt8 packetType;
-	UInt32 lastUploadedPiece;
-	bool enableDelay = false;
+	UInt64 lastUploadedPiece, downloadingFilePiecesNumber;
+	bool enableTimeout = false;
 
 	std::vector<std::string> uploadedFiles;
 	std::string uploadingFileName;
 	std::ofstream uploadingFile;
+	std::ifstream downloadingFile;
 
 	iResult = listener.Bind(((argc == 2) ? argv[1] : DEFAULT_PORT));
 	if (iResult != 0)
@@ -58,8 +59,8 @@ int main(int argc, char* argv[])
 			std::cout << "New client has connected.\n";
 		}
 
-		iResult = socket->Receive(packet, enableDelay ? 5 : -1);
-		if (iResult == SOCKET_ERROR || (enableDelay && iResult == 0))
+		iResult = socket->Receive(packet, enableTimeout ? 5 : -1);
+		if (iResult == SOCKET_ERROR || (enableTimeout && iResult == 0))
 		{
 			socket->Close();
 			continue;
@@ -68,6 +69,11 @@ int main(int argc, char* argv[])
 		packet >> packetType;
 		switch (packetType)
 		{
+			case HANDSHAKE:
+			{
+				enableTimeout = false;
+				break;
+			}
 			case ECHO:
 			{
 				std::string msg;
@@ -104,7 +110,7 @@ int main(int argc, char* argv[])
 			case UPLOAD_PIECE:
 			{
 				UInt32 size;
-				UInt32 pieceNumber;
+				UInt64 pieceNumber;
 				
 				packet >> pieceNumber >> size;
 
@@ -132,15 +138,50 @@ int main(int argc, char* argv[])
 				uploadingFile.close();
 				uploadingFileName.clear();
 
-				enableDelay = false;
+				enableTimeout = false;
 				break;
 			}
 			case DOWNLOAD_PIECE:
 			{
-				
-				
-				break;
+				bool downloadStopped = false;
+				UInt64 pieceNumber, fileSize, piecesNumber;
+				char* piece = new char[DEFAULT_BUFFLEN];
 
+				packet >> pieceNumber;
+
+				downloadingFile.seekg(0, std::ios_base::end);
+				fileSize = downloadingFile.tellg();
+
+				piecesNumber = fileSize / DEFAULT_BUFFLEN;
+				piecesNumber += (fileSize % DEFAULT_BUFFLEN) ? 1 : 0;
+
+				for (UInt64 i = pieceNumber; i < piecesNumber; i++)
+				{
+					UInt32 bytesToRead = (i == piecesNumber - 1) ? fileSize % DEFAULT_BUFFLEN : DEFAULT_BUFFLEN;
+
+					downloadingFile.seekg(i * DEFAULT_BUFFLEN);
+					downloadingFile.read(piece, bytesToRead);
+
+					packet.Clear();
+					packet << DOWNLOAD_PIECE << i << bytesToRead;
+					packet.AddRawData(piece, bytesToRead);
+
+					iResult = socket->Send(packet, 5);
+					if (iResult <= 0)
+					{
+						downloadStopped = true;
+						break;
+					}
+				}
+
+				if (downloadStopped)
+					break;
+
+				packet.Clear();
+				packet << FILE_DOWLOAD_COMPLETE;
+				socket->Send(packet);
+
+				break;
 			}
 			case SHUTDOWN:
 			{
@@ -163,37 +204,35 @@ int main(int argc, char* argv[])
 				
 				uploadingFile.open(uploadingFileName, std::ios::binary);
 
-				enableDelay = true;
+				enableTimeout = true;
 
 				break;
 			}
-			case GET_FILE_ID:
+			case DOWNLOAD_REQUEST:
 			{
+				if (downloadingFile.is_open())
+					downloadingFile.close();
+
 				std::string fileName;
-				Int32 fileID;
-				UInt64 fileSize;
+				UInt8 code;
 				
 				packet >> fileName;
 
 				std::vector<std::string>::iterator iter = std::find(uploadedFiles.begin(), uploadedFiles.end(), fileName);
 				if (iter == uploadedFiles.end())
 				{
-					fileID = -1;
-					fileSize = -1;
+					code = NO_SUCH_FILE;
 				}
 				else
 				{
-					fileID = iter - uploadedFiles.begin();
-
-					std::ifstream file(uploadedFiles[fileID], std::ios::binary | std::ios::ate);
-					fileSize = file.tellg();
-					file.close();
+					downloadingFile.open(uploadedFiles[iter - uploadedFiles.begin()], std::ios::binary);
+					code = DOWNLOAD_CONFIRM;
 				}
 
 				packet.Clear();
-				packet << FILE_ID << fileID << fileSize;
-
-				iResult = socket->Send(packet);
+				packet << code;
+				socket->Send(packet);
+				
 				break;
 			}
 			default:

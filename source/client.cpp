@@ -37,6 +37,10 @@ int main(int argc, char* argv[])
 	}
 
 	std::cout << "Connection to server was succesesful.\n";
+
+	packet.Clear();
+	packet << HANDSHAKE;
+	socket.Send(packet);
 	
 	while (true)
 	{
@@ -72,7 +76,7 @@ int main(int argc, char* argv[])
 
 			char* piece = new char[DEFAULT_BUFFLEN];
 
-			for (UInt32 i = 0; i < piecesNumber; i++)
+			for (UInt64 i = 0; i < piecesNumber; i++)
 			{
 				UInt32 bytesToRead = (i == piecesNumber - 1) ? size % DEFAULT_BUFFLEN : DEFAULT_BUFFLEN;
 				
@@ -104,7 +108,7 @@ int main(int argc, char* argv[])
 						socket.Receive(packet);
 
 						UInt8 code;
-						UInt32 pieceNumber;
+						UInt64 pieceNumber;
 
 						packet >> code >> pieceNumber;
 						i = pieceNumber;
@@ -115,6 +119,7 @@ int main(int argc, char* argv[])
 						std::cout << "Reconnection failed.\n";
 						socket.Close();
 						SocketCleanUp();
+						delete piece;
 						return 1;
 					}
 					
@@ -131,40 +136,30 @@ int main(int argc, char* argv[])
 
 			std::cout << "Uploading file: " << name << " complete.\n";
 
+			delete piece;
+
 		}
 		else if (str == "download")
 		{
 			std::ofstream downloadingFile;
-			UInt64 piecesNumber = 0;
-			UInt8 opCode;
-			char name[20];
+			UInt64 piecesNumber;
+			UInt8 code;
+			std::string name;
 			std::cin.ignore(1);
-			std::cin.getline(name, 20);
+			std::getline(std::cin, name);
 
 			packet.Clear();
-			packet << (UInt8)DOWNLOAD_PIECE << name;
-			iResult = socket.Send(packet);
-			if (iResult == SOCKET_ERROR)
-			{
-				//make smth later
-			}
+			packet << DOWNLOAD_REQUEST << name;
+			socket.Send(packet);
 
-			iResult = socket.Receive(packet);
-			if (iResult == SOCKET_ERROR)
-			{
-				//make smth later
-			}
+			socket.Receive(packet);
+			packet >> code;
 
-			packet >> opCode;
-			/*if (opCode == ERROR_CODE)
+			if (code == NO_SUCH_FILE)
 			{
 				std::cout << "No such file on server.\n";
 				continue;
 			}
-			else if (opCode == CONFIRM_CODE)
-			{
-				packet >> piecesNumber;
-			}*/
 
 			downloadingFile.open(name, std::fstream::binary | std::fstream::trunc);
 			if (!downloadingFile.is_open())
@@ -173,22 +168,36 @@ int main(int argc, char* argv[])
 				break;
 			}
 
-			for (UInt64 i = 0; i < piecesNumber; i++)
+			packet.Clear();
+			packet << DOWNLOAD_PIECE << (UInt64)0;
+			socket.Send(packet);
+
+			UInt64 lastDownloadedPiece = 0;
+
+			while (true)
 			{
-				iResult = socket.Receive(packet);
-				if (iResult == SOCKET_ERROR)
+				iResult = socket.Receive(packet, 5);
+				if (iResult <= 0)
 				{
 					std::cout << "Error occuried during downloading. Trying to reconnect.\n";
 
 					for (UInt32 j = 0; j < 100; j++)
 					{
 						sleep(100);
-						iResult = socket.Reconnect();
-						if (iResult == 0)
+						socket.Reconnect();
+						if (socket.IsConnected())
 							break;
 					}
 
-					if (iResult != 0)
+					if (socket.IsConnected())
+					{
+						std::cout << "Reconnection was successeful.\n";
+						packet.Clear();
+						packet << DOWNLOAD_PIECE << lastDownloadedPiece;
+						socket.Send(packet);
+						continue;
+					}
+					else
 					{
 						std::cout << "Reconnection failed\n.";
 						socket.Close();
@@ -196,23 +205,33 @@ int main(int argc, char* argv[])
 						SocketCleanUp();
 						return 1;
 					}
-					else
-					{
-						std::cout << "Reconnection was successeful.\n";
-						packet.Clear();
-						//packet << (UInt8)CONTINUE_INTERRUPTED_CODE;
-						socket.Send(packet);
-						i--;
-						continue;
-					}
 				}
-				UInt32 bytesRead = packet.ExtractRawData(data);
-				downloadingFile.write(data, bytesRead);
+				UInt8 code;
+				UInt64 pieceNumber;
+				UInt32 size;
+
+				packet >> code;
+
+				if (code == DOWNLOAD_PIECE)
+				{
+					packet >> pieceNumber >> size;
+
+					char* piece = new char[size];
+					packet.ExtractRawData(piece);
+
+					downloadingFile.seekp(pieceNumber * DEFAULT_BUFFLEN);
+					downloadingFile.write(piece, size);
+
+					lastDownloadedPiece = pieceNumber;
+				}
+				else if (code == FILE_DOWLOAD_COMPLETE)
+				{
+					break;
+				}
+
 			}
 			downloadingFile.close();
 			std::cout << "File downloaded.\n";
-
-
 		}
 		else if (str == "close")
 		{
