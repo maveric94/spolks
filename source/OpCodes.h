@@ -22,7 +22,7 @@ const static UInt8 LAST_RECEIVED_PIECE = 0x0E;
 const static UInt8 HANDSHAKE = 0x0F;
 const static UInt8 NO_SUCH_FILE = 0x10;
 
-const static UInt32 DEFAULT_BUFFLEN = 2048;
+const static UInt32 DEFAULT_BUFFLEN = 2048 * 4;
 #define DEFAULT_PORT "27020"
 
 #endif

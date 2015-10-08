@@ -15,10 +15,12 @@ public:
 	TCPSocket(Socket rawSocket);
 	~TCPSocket();
 	int Connect(const char* address, const char* port);
-	int Send(char* data, size_t size, int delay = -1);
-	int Send(Packet& packet, int delay = -1);
-	int Receive(char* buffer, size_t size, int delay = -1);
-	int Receive(Packet& packet, int delay = -1);
+	int Send(char* data, size_t size, int timeout = -1, bool isOOB = false);
+	int Send(Packet& packet, int timeout = -1);
+	int Receive(char* buffer, size_t size, int timeout = -1, bool isOOB = false);
+	int Receive(Packet& packet, int timeout = -1);
+	int SendOOBByte(char byte);
+	int ReceiveOOBByte(char& byte);
 	int Close();
 	int Reconnect();
 	bool IsConnected();

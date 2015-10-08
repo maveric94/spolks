@@ -142,7 +142,6 @@ int main(int argc, char* argv[])
 		else if (str == "download")
 		{
 			std::ofstream downloadingFile;
-			UInt64 piecesNumber;
 			UInt8 code;
 			std::string name;
 			std::cin.ignore(1);
@@ -246,12 +245,13 @@ int main(int argc, char* argv[])
 			std::cout << "Shutdown command.\n";
 			packet.Clear();
 			packet << (UInt8)SHUTDOWN;
-			iResult = socket.Send(packet);
+			socket.Send(packet);
 			break;
 		}
 		else if (str == "echo")
 		{
 			std::string msg;
+			std::string recv;
 
 			std::cin.ignore(1);
 			std::getline(std::cin, msg);
@@ -259,12 +259,12 @@ int main(int argc, char* argv[])
 			packet.Clear();
 			packet << (UInt8)ECHO << msg;
 
-			iResult = socket.Send(packet);
-			iResult = socket.Receive(packet);
+			socket.Send(packet);
+			socket.Receive(packet);
 
 			UInt8 type;
-			packet >> type >> msg;
-			std::cout << "Server says: " << msg << std::endl;
+			packet >> type >> recv;
+			std::cout << "Server says: " << recv << std::endl;
 		}
 		else if (str == "time")
 		{
@@ -276,6 +276,11 @@ int main(int argc, char* argv[])
 			UInt8 type;
 			packet >> type >> data;
 			std::cout << "Server says: " << data << std::endl;
+		}
+		else if (str == "stat")
+		{
+			char a = 'a';
+			socket.SendOOBByte(a);
 		}
 		else
 			std::cout << "Unknown command.\n";

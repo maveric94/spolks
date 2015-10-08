@@ -58,6 +58,10 @@ int main(int argc, char* argv[])
 
 			std::cout << "New client has connected.\n";
 		}
+		/*char ch;
+		iResult = socket->ReceiveOOBByte(ch);
+		if (iResult == 1)
+			std::cout << "Hustone, we have liftoff.\n";*/
 
 		iResult = socket->Receive(packet, enableTimeout ? 5 : -1);
 		if (iResult == SOCKET_ERROR || (enableTimeout && iResult == 0))
@@ -82,6 +86,11 @@ int main(int argc, char* argv[])
 				packet.Clear();
 				packet << ECHO << msg;
 				socket->Send(packet);
+
+				char ch = 'a';
+				sleep(100);
+				socket->SendOOBByte(ch);
+
 				break;
 
 			}
