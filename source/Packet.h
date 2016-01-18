@@ -6,12 +6,13 @@
 #include <cstring>
 #include <cwchar>
 #include "TypeDefs.h"
+//#include "UDPSocket.h"
+//#include "TCPSocket.h"
 
-class TCPSocket;
-//basic concept of this class is taken from sfml class Packet
 class Packet
 {
 	friend class TCPSocket;
+	friend class UDPSocket;
 public:
 	Packet();
 	~Packet();

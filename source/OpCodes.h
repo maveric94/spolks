@@ -22,7 +22,15 @@ const static UInt8 LAST_RECEIVED_PIECE = 0x0E;
 const static UInt8 HANDSHAKE = 0x0F;
 const static UInt8 NO_SUCH_FILE = 0x10;
 
-const static UInt32 DEFAULT_BUFFLEN = 2048 * 4;
-#define DEFAULT_PORT "27020"
+const static UInt32 DEFAULT_BUFFLEN = 4096 * 2;
+const static Int32 defaultTimeout = 5;
+
+const static UInt32 ServerUDPPort = 27020;
+const static UInt32 ClientUDPPort = 27021;
+
+
+#define DEFAULT_PORT "27015"
+#define SERVER_DEFAULT_UDP_PORT "27020"
+#define CLIENT_DEFAULT_UDP_PORT "27021"
 
 #endif

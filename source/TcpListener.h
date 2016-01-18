@@ -1,18 +1,19 @@
 #ifndef TCPLISTENER_H
 #define TCPLISTENER_H
 
-#include "Socket.h"
+#include "util.h"
 #include "TCPSocket.h"
 
 class TCPListener
 {
+	friend class Selector;
 public:
 	TCPListener();
 
-	int Bind(const char* port);
-	int Listen();
+	Int32 Bind(const char* port);
+	Int32 Listen();
 	TCPSocket* Accept();
-	int Close();
+	Int32 Close();
 
 private:
 	TCPListener& operator = (TCPListener socket);

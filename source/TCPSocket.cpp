@@ -4,14 +4,19 @@ TCPSocket::TCPSocket()
 {
 	mSocket = INVALID_SOCKET;
 	mIsConnected = false;
-	mAddrInfo = nullptr;
+	mAddrInfo = NULL;
+
+	mBytesReceived = 0;
+	mBytesSend = 0;
+
+	isTimeoutEnable = false;
 }
 
 TCPSocket::~TCPSocket()
 {
 	/*if (!mIsConnected)
 		Close();*/
-	if (mAddrInfo != nullptr)
+	if (mAddrInfo != NULL)
 		freeaddrinfo(mAddrInfo);
 }
 
@@ -19,10 +24,16 @@ TCPSocket::TCPSocket(Socket rawSocket)
 {
 	mSocket = rawSocket;
 	mIsConnected = true;
-	mAddrInfo = nullptr;
+	mAddrInfo = NULL;
+
+	mBytesReceived = 0;
+	mBytesSend = 0;
+
+	isTimeoutEnable = false;
+
 }
 
-int TCPSocket::Connect(const char* address, const char* port)
+Int32 TCPSocket::Connect(const char* address, const char* port)
 {
 	addrinfo hints;
 	memset(&hints, 0, sizeof(addrinfo));
@@ -32,23 +43,23 @@ int TCPSocket::Connect(const char* address, const char* port)
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_protocol = GET_TCP_PROTO;
 
-	getaddrinfo(address, port, &hints, &mAddrInfo);
+	Int32 result = getaddrinfo(address, port, &hints, &mAddrInfo);
 
 	return Reconnect();
 }
 
-int TCPSocket::Close()
+Int32 TCPSocket::Close()
 {
 	mIsConnected = false;
 	//freeaddrinfo(mAddrInfo);
-	int retval = (mSocket == INVALID_SOCKET) ? 0 : CLOSE_SOCKET(mSocket);
+	Int32 retval = (mSocket == INVALID_SOCKET) ? 0 : CLOSE_SOCKET(mSocket);
 	mSocket = INVALID_SOCKET;
 	return retval;
 }
 
-int TCPSocket::Send(char* data, size_t size, int timeout, bool isOOB)
+Int32 TCPSocket::Send(char* data, size_t size, Int32 timeout, bool isOOB)
 {
-	int flags = isOOB ? MSG_OOB : 0;
+	Int32 flags = isOOB ? MSG_OOB : 0;
 	if (timeout != -1)
 	{
 		fd_set fd;
@@ -60,19 +71,19 @@ int TCPSocket::Send(char* data, size_t size, int timeout, bool isOOB)
 		tv.tv_sec = timeout;
 		tv.tv_usec = 0;
 
-		int selectResult = select(mSocket + 1, nullptr, &fd, nullptr, &tv);
+		Int32 selectResult = select(mSocket + 1, NULL, &fd, NULL, &tv);
 		if (selectResult <= 0)
-		{
-			Close();
 			return selectResult;
-		}
+
 	}
-	return send(mSocket, data, (int)size, flags);
+
+	return send(mSocket, data, (Int32)size, flags);
+
 }
-int TCPSocket::Receive(char* buffer, size_t size, int timeout, bool isOOB)
+Int32 TCPSocket::Receive(char* buffer, size_t size, Int32 timeout, bool isOOB)
 {
-	int flags = isOOB ? MSG_OOB : 0;
-	int bytesLeft = size;
+	Int32 flags = isOOB ? MSG_OOB : 0;
+	Int32 bytesLeft = size;
 
 	do
 	{
@@ -87,25 +98,24 @@ int TCPSocket::Receive(char* buffer, size_t size, int timeout, bool isOOB)
 			tv.tv_sec = timeout;
 			tv.tv_usec = 0;
 
-			int selectResult = select(mSocket + 1, &fd, nullptr, nullptr, &tv);
+			Int32 selectResult = select(mSocket + 1, &fd, NULL, NULL, &tv);
 			if (selectResult <= 0)
 				return selectResult;
 		}
-		int bytesReceived = recv(mSocket, buffer + size - bytesLeft, bytesLeft, flags);
+		Int32 bytesReceived;
+
+		bytesReceived = recv(mSocket, buffer + size - bytesLeft, bytesLeft, flags);
 
 		if (bytesReceived <= 0)
-		{
-			Close();
 			return bytesReceived;
-		}
 
 		bytesLeft -= bytesReceived;
 	} while (bytesLeft);
 
-	return (int)size;
+	return (Int32)size;
 }
 
-int TCPSocket::Send(Packet& packet, int timeout)
+Int32 TCPSocket::Send(Packet& packet, Int32 timeout)
 {
 	Int32 packetSize = packet.mData.size();
 	Int32 opResult;
@@ -119,14 +129,12 @@ int TCPSocket::Send(Packet& packet, int timeout)
 	if (opResult <= 0)
 		return opResult;
 
-	if (opResult > 0)
-		std::cout << opResult << " bytes sent.\n";
-	else
-		std::cout << "Error occured while sendind data.\n";
+	//std::cout << opResult << " bytes sent.\n";
+	mBytesSend += opResult;
 
 	return opResult;
 }
-int TCPSocket::Receive(Packet& packet, int timeout)
+Int32 TCPSocket::Receive(Packet& packet, Int32 timeout)
 {
 	Int32 packetSize;
 	Int32 opResult;
@@ -135,33 +143,72 @@ int TCPSocket::Receive(Packet& packet, int timeout)
 	initPacket.mData.resize(sizeof(Int32));
 	opResult = Receive(&initPacket.mData[0], sizeof(Int32), timeout);
 	if (opResult <= 0)
-	{
-		std::cout << "Error occured while receiveing data.\n";
 		return opResult;
-	}
+
 	initPacket >> packetSize;
 
 	packet.Clear();
 	packet.mData.resize(packetSize);
 	opResult = Receive(&packet.mData[0], packetSize, timeout);
-	if (opResult > 0)
-		std::cout << opResult << " bytes received.\n";
-	else
-		std::cout << "Error occured while receiveing data.\n";
+	if (opResult <= 0)
+		return opResult;
+
+	//std::cout << opResult << " bytes received.\n";
+	mBytesReceived += opResult;
 
 	return opResult;
 }
 
-int TCPSocket::SendOOBByte(char byte)
+Int32 TCPSocket::SendOOBByte(char byte)
 {
+	/*Int32 result;
+	Timeval tv;
+
+	setTimeval(tv, 10);
+	setsockopt(mSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)(void*)&tv, sizeof(Timeval));
+
+	result = Send(&byte, 1, -1, true);
+
+	setTimeval(tv, 300000); //5 mins
+	setsockopt(mSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)(void*)&tv, sizeof(Timeval));
+	return result;*/
+
 	return Send(&byte, 1, -1, true);
 }
-int TCPSocket::ReceiveOOBByte(char& byte)
+Int32 TCPSocket::ReceiveOOBByte(char& byte)
 {
-	return Receive(&byte, 1, 1, true);
+	/*Int32 result;
+	Timeval tv;
+
+	setTimeval(tv, 10);
+	setsockopt(mSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)(void*)&tv, sizeof(Timeval));
+
+	result = Receive(&byte, 1, -1, true);
+
+	setTimeval(tv, 300000); //5 mins
+	Int32 res = setsockopt(mSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)(void*)&tv, sizeof(Timeval));
+	return result;*/
+
+	Int32 result;
+	timeval tv;
+	fd_set fd;
+
+	FD_ZERO(&fd);
+	FD_SET(mSocket, &fd);
+
+	tv.tv_usec = 10;
+	tv.tv_sec = 0;
+
+	result = select(mSocket + 1, NULL, NULL, &fd, &tv);
+	if (result <= 0)
+		return result;
+
+	result = Receive(&byte, 1, -1, true);
+
+	return result;
 }
 
-int TCPSocket::Reconnect()
+Int32 TCPSocket::Reconnect()
 {
 	for (addrinfo* ptr = mAddrInfo; ptr != NULL; ptr = ptr->ai_next)
 	{
@@ -174,7 +221,7 @@ int TCPSocket::Reconnect()
 		}
 
 		// Connect to server.
-		if (connect(mSocket, ptr->ai_addr, (int)ptr->ai_addrlen) == SOCKET_ERROR)
+		if (connect(mSocket, ptr->ai_addr, (Int32)ptr->ai_addrlen) == SOCKET_ERROR)
 		{
 			Close();
 			continue;
@@ -196,4 +243,25 @@ bool TCPSocket::IsConnected()
 {
 	return mIsConnected;
 }
+
+Int32 TCPSocket::GetSocketRemoteAddress(std::string& address, Int32& port)
+{
+	sockaddr addr;
+	socklen_t size = sizeof(sockaddr);
+	char ip[INET6_ADDRSTRLEN];
+
+	if (!getpeername(mSocket, &addr, &size))
+	{
+		struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+		port = ntohs(s->sin_port);
+		inet_ntop(AF_INET, &s->sin_addr, ip, sizeof ip);
+		address = ip;
+		return 0;
+	}
+
+	return -1;
+}
+
+
+
 

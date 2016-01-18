@@ -13,14 +13,16 @@
   <ItemGroup>
     <ClCompile Include="..\source\client.cpp" />
     <ClCompile Include="..\source\Packet.cpp" />
-    <ClCompile Include="..\source\Socket.cpp" />
+    <ClCompile Include="..\source\UDPSocket.cpp" />
+    <ClCompile Include="..\source\util.cpp" />
     <ClCompile Include="..\source\TCPListener.cpp" />
     <ClCompile Include="..\source\TCPSocket.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\source\OpCodes.h" />
     <ClInclude Include="..\source\Packet.h" />
-    <ClInclude Include="..\source\Socket.h" />
+    <ClInclude Include="..\source\UDPSocket.h" />
+    <ClInclude Include="..\source\util.h" />
     <ClInclude Include="..\source\TcpListener.h" />
     <ClInclude Include="..\source\TCPSocket.h" />
   </ItemGroup>

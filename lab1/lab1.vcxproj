@@ -13,17 +13,21 @@
   <ItemGroup>
     <ClInclude Include="..\source\OpCodes.h" />
     <ClInclude Include="..\source\Packet.h" />
-    <ClInclude Include="..\source\Socket.h" />
+    <ClInclude Include="..\source\Selector.h" />
     <ClInclude Include="..\source\TcpListener.h" />
     <ClInclude Include="..\source\TCPSocket.h" />
     <ClInclude Include="..\source\TypeDefs.h" />
+    <ClInclude Include="..\source\UDPSocket.h" />
+    <ClInclude Include="..\source\util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\source\Selector.cpp" />
     <ClCompile Include="..\source\server.cpp" />
-    <ClCompile Include="..\source\Socket.cpp" />
     <ClCompile Include="..\source\TCPListener.cpp" />
-    <ClCompile Include="..\source\TCPSocket.cpp" />
     <ClCompile Include="..\source\Packet.cpp" />
+    <ClCompile Include="..\source\TCPSocket.cpp" />
+    <ClCompile Include="..\source\UDPSocket.cpp" />
+    <ClCompile Include="..\source\util.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9B7AB5AB-646E-412C-8016-C0E2B0A71307}</ProjectGuid>

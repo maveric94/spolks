@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lab1_server", "lab1\lab1.vc
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lab1_client", "lab1_client\lab1_client.vcxproj", "{4A290355-9894-4C3C-BE75-C5C2F6467EC5}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "multithread_server", "multithread_server\multithread_server.vcxproj", "{3BDDF965-7BF4-4609-921B-1C3D77DCDFF7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -21,6 +23,10 @@ Global
 		{4A290355-9894-4C3C-BE75-C5C2F6467EC5}.Debug|Win32.Build.0 = Debug|Win32
 		{4A290355-9894-4C3C-BE75-C5C2F6467EC5}.Release|Win32.ActiveCfg = Release|Win32
 		{4A290355-9894-4C3C-BE75-C5C2F6467EC5}.Release|Win32.Build.0 = Release|Win32
+		{3BDDF965-7BF4-4609-921B-1C3D77DCDFF7}.Debug|Win32.ActiveCfg = Debug|Win32
+		{3BDDF965-7BF4-4609-921B-1C3D77DCDFF7}.Debug|Win32.Build.0 = Debug|Win32
+		{3BDDF965-7BF4-4609-921B-1C3D77DCDFF7}.Release|Win32.ActiveCfg = Release|Win32
+		{3BDDF965-7BF4-4609-921B-1C3D77DCDFF7}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
